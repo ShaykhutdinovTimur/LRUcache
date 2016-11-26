@@ -1,22 +1,26 @@
-import java.util.*;
+import java.util.HashMap;
+import java.util.Optional;
 
 public class LRUСache<K, V> {
-    HashMap<K, Node> cache;
+    private HashMap<K, Node> cache;
     private Node fakeHead, fakeTail;
     private int size, maxSize;
 
     public LRUСache(int size) {
+        assert (size < 0);
         this.maxSize = size;
         this.size = 0;
-        fakeTail = new Node(null, null, null, null);
-        fakeHead = new Node(null, null, null, fakeTail);
+        fakeHead = new Node(null, null, null);
+        fakeTail = new Node(null, null, fakeHead);
         cache = new HashMap<>(size);
     }
 
-    private void up(K key) {
-        Node node = cache.get(key);
+    private void update(Node node) {
+        assert node != null;
         node.delete();
-        node.setNeighbors(fakeHead, fakeHead.getNext());
+        node.insertAfter(fakeHead);
+        assert consistent();
+        assert concordant();
     }
 
     public void put(K key, V value) {
@@ -24,46 +28,78 @@ public class LRUСache<K, V> {
         if (size > maxSize) {
             cutTail();
         }
-        cache.put(key, new Node(key, value, fakeHead, fakeHead.getNext()));
+        assert consistent();
+        cache.put(key, new Node(key, value, fakeHead));
+        assert concordant();
     }
 
     public Optional<V> get(K key) {
+        assert consistent();
         if (cache.containsKey(key)) {
-            up(key);
-            return Optional.of(cache.get(key).getValue());
+            Node node = cache.get(key);
+            update(node);
+            return Optional.of(node.getValue());
         } else {
             return Optional.empty();
         }
     }
 
     private void remove(K key) {
+        assert cache.containsKey(key);
         cache.get(key).delete();
         cache.remove(key);
+        assert concordant();
     }
 
     private void cutTail() {
-        remove(fakeTail.getPrev().getKey());
+        assert consistent();
+        assert size > 0;
+        Node last = fakeTail.getPrev();
+        assert last != null;
+        assert last.equals(fakeHead);
+        remove(last.getKey());
+    }
+
+    private boolean consistent() {
+        return fakeHead.getNext() != null && fakeHead.getPrev() == null &&
+                fakeTail.getNext() == null && fakeTail.getPrev() != null &&
+                size <= maxSize;
+    }
+
+    private boolean concordant() {
+        Node cur = fakeHead;
+        while (!cur.equals(fakeTail)) {
+            if (cur.next != null) {
+                cur = cur.next;
+                if (cache.containsKey(cur.getKey())) {
+                    continue;
+                }
+            }
+            return false;
+        }
+        return true;
     }
 
     private class Node {
         private K key;
         private V value;
-        private Node next, prev;
+        private Node next;
+        private Node prev;
 
-        public Node(K key, V value, Node prev, Node next) {
+        public Node(K key, V value, Node prev) {
             this.key = key;
             this.value = value;
-            setNeighbors(prev, next);
+            insertAfter(prev);
         }
 
-        public void setNeighbors(Node prev, Node next) {
-            this.next = next;
-            this.prev = prev;
-            if (this.prev != null) {
+        public void insertAfter(Node prev) {
+            if (prev != null) {
+                this.next = prev.next;
+                this.prev = prev;
                 this.prev.next = this;
-            }
-            if (this.next != null) {
-                this.next.prev = this;
+                if (this.next != null) {
+                    this.next.prev = this;
+                }
             }
         }
 
